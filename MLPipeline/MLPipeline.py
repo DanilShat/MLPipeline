@@ -128,4 +128,57 @@ class MLPipeline:
 
             if self.df.select_dtypes(include=[np.number]).shape[1] > 50:  # If there are more than 50 numerical features
                 print("Suggested models for high dimensional datasets: LinearSVC, SGDClassifier, RandomForestClassifier")
+    def DataEngineering(self, label_column, threshold=0.4, create_report=False):
+        # Get numerical columns
+        numerical_cols = self.df.select_dtypes(include=[np.number]).columns.tolist()
+        # Remove target column
+        numerical_cols.remove(label_column)
+        
+        # Apply data engineering methods to every numerical column
+        new_cols = pd.DataFrame(index=self.df.index)
+        for i in range(len(numerical_cols)):
+            for j in range(i+1, len(numerical_cols)):
+                new_col_mul = numerical_cols[i] + '*' + numerical_cols[j]
+                new_col_div = numerical_cols[i] + '/' + numerical_cols[j]
+
+                new_cols[new_col_mul] = self.df[numerical_cols[i]] * self.df[numerical_cols[j]]
+                new_cols[new_col_div] = self.df[numerical_cols[i]] / self.df[numerical_cols[j]]
+
+        # Calculate correlations with target column for new columns
+        correlations = new_cols.corrwith(self.df[label_column])
+
+        # Apply transformations to original columns and calculate their correlations
+        transformed_cols = []
+        original_corr = self.df[numerical_cols].corrwith(self.df[label_column])
+        for col in numerical_cols:
+            # Apply log transform where possible
+            if self.df[col].min() > 0:
+                log_col = self.df[col].apply(np.log)
+                log_corr = log_col.corr(self.df[label_column])
+                # Add transformed column if its correlation with target is higher than original column
+                if abs(log_corr) > abs(original_corr[col]):
+                    self.df[col + '_log'] = log_col
+                    transformed_cols.append((col, col + '_log', original_corr[col], log_corr))
+            # Apply square transform
+            square_col = self.df[col].apply(np.square)
+            square_corr = square_col.corr(self.df[label_column])
+            # Add transformed column if its correlation with target is higher than original column
+            if abs(square_corr) > abs(original_corr[col]):
+                self.df[col + '_squared'] = square_col
+                transformed_cols.append((col, col + '_squared', original_corr[col], square_corr))
+
+        # Filter new columns with abs of correlation more than threshold
+        cols_to_keep = correlations[correlations.abs() > threshold].index.tolist()
+
+        # Update dataframe to keep only relevant new columns and original columns
+        self.df = pd.concat([self.df, new_cols[cols_to_keep]], axis=1)
+
+        # Create report if specified
+        if create_report:
+            print("New columns and their correlations:")
+            print(correlations[correlations.abs() > threshold])
+            print("\nTransformed columns added:")
+            for old_col, new_col, old_corr, new_corr in transformed_cols:
+                print(f"{old_col} ---> {new_col}: {abs(old_corr)} ---> {abs(new_corr)}")
+
 
