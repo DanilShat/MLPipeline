@@ -148,21 +148,25 @@ class MLPipeline:
 
         else:
             y = self.df[label_col]
-            if y.dtype.name == 'category' or len(y.unique()) < 20:  
-                print("This is a classification task.")
-            else:
-                print("This is a regression task.")
-
             num_rows = len(y)
             print(f"The dataset has {num_rows} rows.")
 
-            if num_rows < 100000:  
-                print("Suggested models for smaller datasets: SVC, RandomForestClassifier, KNeighborsClassifier, GradientBoostingClassifier")
+            if y.dtype.name == 'category' or len(y.unique()) < 20:  
+                print("This is a classification task.")
+                if num_rows < 100000:  
+                    print("Suggested models for smaller datasets: SVC, RandomForestClassifier, KNeighborsClassifier, GradientBoostingClassifier")
+                else:
+                    print("Suggested models for larger datasets: SGDClassifier, RandomForestClassifier, LinearSVC")
             else:
-                print("Suggested models for larger datasets: SGDClassifier, RandomForestClassifier, LinearSVC")
+                print("This is a regression task.")
+                if num_rows < 100000:  
+                    print("Suggested models for smaller datasets: SVR, RandomForestRegressor, KNeighborsRegressor, GradientBoostingRegressor")
+                else:
+                    print("Suggested models for larger datasets: SGDRegressor, RandomForestRegressor, LinearSVR")
 
             if self.df.select_dtypes(include=[np.number]).shape[1] > 50:  
-                print("Suggested models for high dimensional datasets: LinearSVC, SGDClassifier, RandomForestClassifier")
+                print("Suggested models for high dimensional datasets: LinearSVC, SGDClassifier, RandomForestClassifier" if y.dtype.name == 'category' or len(y.unique()) < 20 else "Suggested models for high dimensional datasets: LinearSVR, SGDRegressor, RandomForestRegressor")
+
     def DataEngineering(self, label_column, threshold=0.4, create_report=False):
         """
         Performs data engineering on the dataframe.
@@ -216,22 +220,29 @@ class MLPipeline:
             print("\nTransformed columns added:")
             for old_col, new_col, old_corr, new_corr in transformed_cols:
                 print(f"{old_col} ---> {new_col}: {abs(old_corr)} ---> {abs(new_corr)}")
-    def split_data(self, input_cols, label_col, split=0.2, shuffle=True):
+    def split_data(self, input_cols, label_col, split=0.2, shuffle=True, threshold=None):
         """
         Splits the dataframe into training and testing sets.
-    
+
         Parameters:
         input_cols (list): List of column names to be used as input features.
         label_col (str): The name of the label column.
         split (float, optional): The proportion of the dataset to include in the test split. Default is 0.2.
         shuffle (bool, optional): Whether or not to shuffle the data before splitting. If False, the method does a sequential split. Default is True.
-    
+        threshold (float, optional): The absolute value of the correlation coefficient threshold for feature selection. Default is None.
+
         Returns:
         X_train (DataFrame): The input features for the training set.
         X_test (DataFrame): The input features for the testing set.
         y_train (Series): The labels for the training set.
         y_test (Series): The labels for the testing set.
         """
+        if threshold is not None:
+            correlations = self.df[input_cols].corrwith(self.df[label_col]).abs()
+            input_cols = correlations[correlations > threshold].index.tolist()
+            print(f"Columns in X_train: {input_cols}")
+            print(f"Columns not in X_train: {list(set(self.df.columns) - set(input_cols))}")
+
         X = self.df[input_cols]
         y = self.df[label_col]
 
