@@ -5,6 +5,8 @@ from scipy import stats
 import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
+from sklearn.impute import SimpleImputer
+
 
 class MLPipeline:
     def __init__(self, df):
@@ -44,6 +46,10 @@ class MLPipeline:
                     self.df[col].fillna(self.df[col].mode()[0], inplace=True)
                 elif method == 'drop':
                     self.df = self.df[self.df[col].notna()]
+                elif method == 'most_frequent':
+                    self.df[col].fillna(self.df[col].value_counts().idxmax(), inplace=True)
+                elif method == 'max(labels)+1'
+                    self.df[col].fillna(self.df[col].max() + 1, inplace=True)
                 else:
                     self.df[col].fillna(method, inplace=True)
 
@@ -105,8 +111,10 @@ class MLPipeline:
                 g.axes[i, j].set_visible(False)
             plt.show()
             print("\n")
-            
-    def create_handle_missing_values(self):
+
+
+    
+    def create_handle_missing_values(self, best_imputation = False, label_col = None one_strategy = None):
         """
         Creates a dictionary for handling missing values in the dataframe.
     
@@ -116,56 +124,43 @@ class MLPipeline:
         handle_missing_values (dict): A dictionary with column names as keys and 'drop' as values for columns with missing values.
         """
         handle_missing_values = {}
+        target = label_col
+        if (best_imputation):
+            numeric_strategies = ['mean', 'median', 'mode']
+            categorical_strategies = ['most_frequent', 'max(labels)+1']
+            best_strategies = {}
 
-        for col in self.df.columns:
-            if self.df[col].isnull().any():
-                handle_missing_values[col] = 'drop'
+            for column in self.df.columns:
+                if self.df[column].isnull().sum() > 0:
+                    best_correlation = -np.inf
+                    best_strategy = None
+                    strategies = numeric_strategies if self.df[column].dtype in ['int64', 'float64'] else categorical_strategies
 
-        return handle_missing_values
-    
-    def choose_model(self, label_col=None):
-        """
-        Suggests appropriate machine learning models based on the characteristics of the dataset.
-    
-        Parameters:
-        label_col (str, optional): The name of the label column. If None, the function will suggest models for unsupervised learning tasks. Default is None.
-    
-        Returns:
-        None
-    
-        Prints:
-        - The type of learning task (unsupervised, classification, regression).
-        - The number of rows in the dataset.
-        - Suggested models based on the size and dimensionality of the dataset.
-        """
-        if label_col is None:
-            print("This is an unsupervised learning task.")
-            print("The number of clusters is known.")
-            print("Suggested models: KMeans, GaussianMixture, SpectralClustering")
+                    for strategy in strategies:
+                        df_temp = self.df.copy()
+                        imputer = SimpleImputer(strategy=strategy)
 
-            print("The number of clusters is not known.")
-            print("Suggested models: DBSCAN, MeanShift, OPTICS, AffinityPropagation")
+                        if strategy == 'most_frequent':
+                            df_temp[column].fillna(df_temp[column].value_counts().idxmax(), inplace=True)
+                        elif strategy == 'max(labels)+1':
+                            df_temp[column].fillna(df_temp[column].max() + 1, inplace=True)
+                        else:
+                            df_temp[column] = imputer.fit_transform(df_temp[[column]])
 
-        else:
-            y = self.df[label_col]
-            num_rows = len(y)
-            print(f"The dataset has {num_rows} rows.")
+                        correlation = df_temp[column].corr(df_temp[target])
 
-            if y.dtype.name == 'category' or len(y.unique()) < 20:  
-                print("This is a classification task.")
-                if num_rows < 100000:  
-                    print("Suggested models for smaller datasets: SVC, RandomForestClassifier, KNeighborsClassifier, GradientBoostingClassifier")
-                else:
-                    print("Suggested models for larger datasets: SGDClassifier, RandomForestClassifier, LinearSVC")
-            else:
-                print("This is a regression task.")
-                if num_rows < 100000:  
-                    print("Suggested models for smaller datasets: SVR, RandomForestRegressor, KNeighborsRegressor, GradientBoostingRegressor")
-                else:
-                    print("Suggested models for larger datasets: SGDRegressor, RandomForestRegressor, LinearSVR")
+                        if correlation > best_correlation:
+                            best_correlation = correlation
+                            best_strategy = strategy
 
-            if self.df.select_dtypes(include=[np.number]).shape[1] > 50:  
-                print("Suggested models for high dimensional datasets: LinearSVC, SGDClassifier, RandomForestClassifier" if y.dtype.name == 'category' or len(y.unique()) < 20 else "Suggested models for high dimensional datasets: LinearSVR, SGDRegressor, RandomForestRegressor")
+                    best_strategies[column] = best_strategy
+
+        if one_strategy not None:
+            for col in self.df.columns:
+                if self.df[col].isnull().any():
+                    handle_missing_values[col] = one_strategy
+                    
+        return handle_missing_values   
 
     def DataEngineering(self, label_column, threshold=0.4, create_report=False):
         """
